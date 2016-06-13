@@ -1,6 +1,6 @@
 ﻿namespace OpenTKSandbox
 {
-    partial class Form1
+    partial class OpenTKSandbox
     {
         /// <summary>
         /// Required designer variable.
@@ -69,8 +69,8 @@
             this.AutoScaleMode = System.Windows.Forms.AutoScaleMode.Font;
             this.ClientSize = new System.Drawing.Size(1175, 828);
             this.Controls.Add(this.pnlTimeslice);
-            this.Name = "Form1";
-            this.Text = "Form1";
+            this.Name = "OpenTKSandbox";
+            this.Text = "OpenTK Sandbox";
             this.ResumeLayout(false);
 
         }
@@ -81,5 +81,5 @@
         private System.Windows.Forms.Panel pnlTimeslice;
     }
 }
-}
+
 

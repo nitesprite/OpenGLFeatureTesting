@@ -1,12 +1,9 @@
 ﻿using System;
 using System.Collections.Generic;
-using System.Diagnostics;
-using System.Data;
 using System.Drawing;
 using System.Drawing.Imaging;
 using System.IO;
 using System.Linq;
-using System.Threading.Tasks;
 using System.Runtime.InteropServices;
 using System.Windows.Forms;
 using OpenTK;
@@ -14,7 +11,7 @@ using OpenTK.Graphics.OpenGL4;
 
 namespace OpenTKSandbox
 {
-    public partial class Form1 : Form
+    public partial class OpenTKSandbox : Form
     {
         #region Class Variables
 
@@ -68,7 +65,7 @@ namespace OpenTKSandbox
 
         private GLPositionColored2[] lineVerts;         // vertex data for lines
 
-        private UInt32 linesIBO;                    // Indices Buffer Object
+        private UInt32 IBOlines;                    // Indices Buffer Object
 
         private UInt32[] lineIndices;
 
@@ -104,7 +101,11 @@ namespace OpenTKSandbox
 
         #region Constructor
 
-        public Form1()
+        /// <summary>
+        /// OpenTK Sandbox opens a windows form with OpenTK GLControl bound to a panel object to fill full client area.
+        /// Client area defined based on size of screen and size of data objects.
+        /// </summary>
+        public OpenTKSandbox()
         {
             InitializeComponent();
 
@@ -114,6 +115,185 @@ namespace OpenTKSandbox
 
         #region Initialise
 
+        /// <summary>
+        /// Initialise GL Control when loaded
+        /// </summary>
+        /// <param name="sender"></param>
+        /// <param name="e"></param>
+        private void OnGL_Load(object sender, EventArgs e)
+        {
+            // Initialise Shader Program
+            InitialiseShaderProgram();
+
+            // Initialise Buffers
+            InitialiseBuffers();
+
+            // Initialise Textures
+            InitialiseTextures();
+
+            // Load Data
+            LoadData();
+
+            xMin -= 1m;
+            xMax += 1m;
+            yMin -= 1m;
+            yMax += 1m;
+
+            // Initialise Graphics
+            InitialiseGraphics();
+
+            ShowLineObjects();
+
+            // Set background colour
+            GL.ClearColor(Color.Blue);
+            CheckForGL_Error("Set Clear Colour");
+
+            // Set Point Size
+            GL.PointSize(5);
+            CheckForGL_Error("Set Point Size");
+
+            UpdateFrame();
+            UpdateTextureFrame();
+
+            glControl1.Invalidate();
+
+            // Redraw loop if needed
+            //Application.Idle += Application_Idle;
+        }
+
+        /// <summary>
+        /// Initialise shader programs
+        /// </summary>
+        private void InitialiseShaderProgram()
+        {
+            // Indexed Text Numbers shader
+            textShaderProgramID = GL.CreateProgram();
+            CheckForGL_Error("Create Shader textShaderProgramID");
+
+            // Load vertex and fragment shaders
+            LoadShader("TextVertexShader.glsl", ShaderType.VertexShader, textShaderProgramID, out textVertexShaderID);
+            LoadShader("TextFragmentShader.glsl", ShaderType.FragmentShader, textShaderProgramID, out textFragmentShaderID);
+
+            // Link shader program
+            GL.LinkProgram(textShaderProgramID);
+            CheckForGL_Error("Link Program textShaderProgramID");
+
+            string info = "";
+            info = GL.GetProgramInfoLog(textShaderProgramID);
+            CheckForGL_Error("Get Program textShaderProgramID Info " + info);
+
+            attribute_texture_position = GL.GetAttribLocation(textShaderProgramID, "position3D");
+            CheckForGL_Error("Get Attribute Text textShaderProgramID Location");
+
+            attribute_textture_coord = GL.GetAttribLocation(textShaderProgramID, "texturecoordinates");
+            CheckForGL_Error("Get Attribute Text Texture textShaderProgramID Location");
+
+            uniform_modelview = GL.GetUniformLocation(textShaderProgramID, "modelview");
+            CheckForGL_Error("Get Uniform Location x_modelview Modelview textShaderProgramID");
+
+            uniform_texture_array = GL.GetUniformLocation(textShaderProgramID, "textureArray");
+            CheckForGL_Error("Get Uniform Location x_intexlayer textShaderProgramID");
+
+            uniform_texture_layer = GL.GetUniformLocation(textShaderProgramID, "texurelayer");
+            CheckForGL_Error("Get Uniform Location x_intexlayer textShaderProgramID");
+
+            Console.Write("attribute_texture_position: {0}, attribute_textture_coord: {1}, uniform_texture_layer: {2}, uniform_modelview: {3}, uniform_texture_array: {4}\n", attribute_texture_position, attribute_textture_coord, uniform_texture_layer, uniform_modelview, uniform_texture_array);
+
+            if (attribute_texture_position == -1 || attribute_textture_coord == -1 || uniform_texture_layer == -1 || uniform_modelview == -1 || uniform_texture_array == -1)
+            {
+                Console.WriteLine("Error binding text attributes textShaderProgramID");
+            }
+
+            shaderProgramID = GL.CreateProgram();
+            CheckForGL_Error("Create Shader shaderProgramID");
+
+            // Load vertex and fragment shaders
+            LoadShader("VertexShader.glsl", ShaderType.VertexShader, shaderProgramID, out vertexShaderID);
+            LoadShader("FragmentShader.glsl", ShaderType.FragmentShader, shaderProgramID, out fragmentShaderID);
+
+            // Link shader program
+            GL.LinkProgram(shaderProgramID);
+            CheckForGL_Error("Link Program shaderProgramID");
+
+            Console.WriteLine(GL.GetProgramInfoLog(shaderProgramID));
+            CheckForGL_Error("Get Program shaderProgramID Info");
+
+            attribute_position = GL.GetAttribLocation(shaderProgramID, "vposition");
+            CheckForGL_Error("Get Attribute attribute_position Location shaderProgramID");
+
+            attribute_color = GL.GetAttribLocation(shaderProgramID, "vcolor");
+            CheckForGL_Error("Get Attribute attribute_color Location shaderProgramID");
+
+            uniform_mview = GL.GetUniformLocation(shaderProgramID, "vmodelview");
+            CheckForGL_Error("Get Uniform Location Modelview shaderProgramID");
+
+            Console.Write("attribute_position: {0}, attribute_color: {1}, uniform_mview: {2}\n", attribute_position, attribute_color, uniform_mview);
+
+            if (attribute_position == -1 || attribute_color == -1 || uniform_mview == -1)
+            {
+                Console.WriteLine("Error binding attributes shaderProgramID");
+            }
+
+        }
+
+        /// <summary>
+        /// Load shader program from file
+        /// </summary>
+        /// <param name="filename">Filename</param>
+        /// <param name="type">Shader type (vertex/fragment)</param>
+        /// <param name="program">Program ID this shader will be linked to</param>
+        /// <param name="address">Shader ID</param>
+        private void LoadShader(String filename, ShaderType type, int program, out int address)
+        {
+            address = GL.CreateShader(type);
+
+            CheckForGL_Error("Create Shader");
+
+            using (StreamReader sr = new StreamReader(filename))
+            {
+                GL.ShaderSource(address, sr.ReadToEnd());
+                CheckForGL_Error("Read Shader Source");
+            }
+
+            GL.CompileShader(address);
+            CheckForGL_Error("Compile Shader");
+
+            GL.AttachShader(program, address);
+            CheckForGL_Error("Attach Shader");
+
+            Console.WriteLine(GL.GetShaderInfoLog(address));
+            CheckForGL_Error("Get Shader Info (Write Console)");
+        }
+
+        /// <summary>
+        /// Initialise vertex buffer objects and Index buffer objects as required
+        /// </summary>
+        private void InitialiseBuffers()
+        {
+            // Object Text Buffer create
+            GL.GenBuffers(1, out VBOtext);
+            CheckForGL_Error("GenBuffer VBOtext");
+
+            // Object Lines Buffer create
+            GL.GenBuffers(1, out VBOlines);
+            CheckForGL_Error("GenBuffer VBOlines");
+
+            GL.GenBuffers(1, out IBOlines);
+            CheckForGL_Error("GenBuffer linesIBO");
+        }
+
+        /// <summary>
+        /// Initialise texture object(s)
+        /// </summary>
+        private void InitialiseTextures()
+        {
+            CreateIndexedTexture();
+        }
+
+        /// <summary>
+        /// Load object data fro file
+        /// </summary>
+        /// <returns>Boolean true if loaded OK, false if error occured</returns>
         private bool LoadData()
         {
             FileStream streamIn;
@@ -213,165 +393,9 @@ namespace OpenTKSandbox
             return true;
         }
 
-        private void OnGL_Load(object sender, EventArgs e)
-        {
-            // Initialise Shader Program
-            InitialiseShaderProgram();
-
-            // Initialise Buffers
-            InitialiseBuffers();
-
-            // Initialise Textures
-            InitialiseTextures();
-
-            // Load Data
-            LoadData();
-
-            xMin -= 1m;
-            xMax += 1m;
-            yMin -= 1m;
-            yMax += 1m;
-
-            // Initialise Graphics
-            InitialiseGraphics();
-
-            ShowLineObjects();
-
-            // Set background colour
-            GL.ClearColor(Color.Blue);
-            CheckForGL_Error("Set Clear Colour");
-
-            // Set Point Size
-            GL.PointSize(5);
-            CheckForGL_Error("Set Point Size");
-
-            UpdateFrame();
-            UpdateTextureFrame();
-
-            glControl1.Invalidate();
-
-            Application.Idle += Application_Idle;
-        }
-
-        private void SetupViewport()
-        {
-            GL.Viewport(0, 0, glControl1.Width, glControl1.Height); // Use all of the controls painting area
-            CheckForGL_Error("Viewport");
-        }
-
-        private void InitialiseShaderProgram()
-        {
-            // XSection Numbers shader
-            textShaderProgramID = GL.CreateProgram();
-            CheckForGL_Error("Create Shader XSectionShaderProgramID");
-
-            // Load vertex and fragment shaders
-            LoadShader("TextVertexShader.glsl", ShaderType.VertexShader, textShaderProgramID, out textVertexShaderID);
-            LoadShader("TextFragmentShader.glsl", ShaderType.FragmentShader, textShaderProgramID, out textFragmentShaderID);
-
-            // Link shader program
-            GL.LinkProgram(textShaderProgramID);
-            CheckForGL_Error("Link Program XSectionShaderProgramID");
-
-            string info = "";
-            info = GL.GetProgramInfoLog(textShaderProgramID);
-            CheckForGL_Error("Get Program XSectionShaderProgramID Info " + info);
-
-            attribute_texture_position = GL.GetAttribLocation(textShaderProgramID, "position3D");
-            CheckForGL_Error("Get Attribute Text XSectionShaderProgramID Location");
-
-            attribute_textture_coord = GL.GetAttribLocation(textShaderProgramID, "texturecoordinates");
-            CheckForGL_Error("Get Attribute Text Texture XSectionShaderProgramID Location");
-
-            uniform_modelview = GL.GetUniformLocation(textShaderProgramID, "modelview");
-            CheckForGL_Error("Get Uniform Location x_modelview Modelview XSectionShaderProgramID");
-
-            uniform_texture_array = GL.GetUniformLocation(textShaderProgramID, "textureArray");
-            CheckForGL_Error("Get Uniform Location x_intexlayer XSectionShaderProgramID");
-
-            uniform_texture_layer = GL.GetUniformLocation(textShaderProgramID, "texurelayer");
-            CheckForGL_Error("Get Uniform Location x_intexlayer XSectionShaderProgramID");
-
-            Console.Write("attribute_texture_position: {0}, attribute_textture_coord: {1}, uniform_texture_layer: {2}, uniform_modelview: {3}, uniform_texture_array: {4}\n", attribute_texture_position, attribute_textture_coord, uniform_texture_layer, uniform_modelview, uniform_texture_array);
-
-            if (attribute_texture_position == -1 || attribute_textture_coord == -1 || uniform_texture_layer == -1 || uniform_modelview == -1 || uniform_texture_array == -1)
-            {
-                Console.WriteLine("Error binding text attributes XSectionShaderProgramID");
-            }
-
-            shaderProgramID = GL.CreateProgram();
-            CheckForGL_Error("Create Shader shaderProgramID");
-
-            // Load vertex and fragment shaders
-            LoadShader("VertexShader.glsl", ShaderType.VertexShader, shaderProgramID, out vertexShaderID);
-            LoadShader("FragmentShader.glsl", ShaderType.FragmentShader, shaderProgramID, out fragmentShaderID);
-
-            // Link shader program
-            GL.LinkProgram(shaderProgramID);
-            CheckForGL_Error("Link Program shaderProgramID");
-
-            Console.WriteLine(GL.GetProgramInfoLog(shaderProgramID));
-            CheckForGL_Error("Get Program shaderProgramID Info");
-
-            attribute_position = GL.GetAttribLocation(shaderProgramID, "vposition");
-            CheckForGL_Error("Get Attribute attribute_position Location shaderProgramID");
-
-            attribute_color = GL.GetAttribLocation(shaderProgramID, "vcolor");
-            CheckForGL_Error("Get Attribute attribute_color Location shaderProgramID");
-
-            uniform_mview = GL.GetUniformLocation(shaderProgramID, "vmodelview");
-            CheckForGL_Error("Get Uniform Location Modelview shaderProgramID");
-
-            Console.Write("attribute_position: {0}, attribute_color: {1}, uniform_mview: {2}\n", attribute_position, attribute_color, uniform_mview);
-
-            if (attribute_position == -1 || attribute_color == -1 || uniform_mview == -1)
-            {
-                Console.WriteLine("Error binding attributes shaderProgramID");
-            }
-
-        }
-
-        private void LoadShader(String filename, ShaderType type, int program, out int address)
-        {
-            address = GL.CreateShader(type);
-
-            CheckForGL_Error("Create Shader");
-
-            using (StreamReader sr = new StreamReader(filename))
-            {
-                GL.ShaderSource(address, sr.ReadToEnd());
-                CheckForGL_Error("Read Shader Source");
-            }
-
-            GL.CompileShader(address);
-            CheckForGL_Error("Compile Shader");
-
-            GL.AttachShader(program, address);
-            CheckForGL_Error("Attach Shader");
-
-            Console.WriteLine(GL.GetShaderInfoLog(address));
-            CheckForGL_Error("Get Shader Info (Write Console)");
-        }
-
-        private void InitialiseBuffers()
-        {
-            // Object Text Buffer create
-            GL.GenBuffers(1, out VBOtext);
-            CheckForGL_Error("GenBuffer VBOtext");
-
-            // Object Lines Buffer create
-            GL.GenBuffers(1, out VBOlines);
-            CheckForGL_Error("GenBuffer VBOlines");
-
-            GL.GenBuffers(1, out linesIBO);
-            CheckForGL_Error("GenBuffer linesIBO");
-        }
-
-        private void InitialiseTextures()
-        {
-            CreateIndexedTexture();
-        }
-
+        /// <summary>
+        /// Set parameters for graphics based on loaded data
+        /// </summary>
         private void InitialiseGraphics()
         {
             dx = (float)(xMax - xMin);
@@ -400,6 +424,9 @@ namespace OpenTKSandbox
             SetupViewport();
         }
 
+        /// <summary>
+        /// Set the window parameters for the scene
+        /// </summary>
         public void InitialiseWindow()
         {
             siteAreaSizeX = dx;
@@ -472,11 +499,27 @@ namespace OpenTKSandbox
             this.Invalidate();
         }
 
+        /// <summary>
+        /// Get screen size
+        /// </summary>
+        /// <returns>Screen rectangle size</returns>
         public Rectangle GetScreen()
         {
             return Screen.GetBounds(this);
         }
 
+        /// <summary>
+        /// Set the GL viewport
+        /// </summary>
+        private void SetupViewport()
+        {
+            GL.Viewport(0, 0, glControl1.Width, glControl1.Height); // Use all of the controls painting area
+            CheckForGL_Error("Viewport");
+        }
+
+        /// <summary>
+        /// Define the modelview projection matrix
+        /// </summary>
         private void SetModelView()
         {
             modelMatrix = Matrix4.CreateScale(zoom, zoom, zoom) * Matrix4.CreateRotationX(rotateAngleX) * Matrix4.CreateRotationY(rotateAngleY) * Matrix4.CreateRotationZ(rotateAngleZ) * Matrix4.CreateTranslation(moveX, moveY, 0f);
@@ -644,6 +687,9 @@ namespace OpenTKSandbox
 
         #region Draw Objects
 
+        /// <summary>
+        /// Draw line objects
+        /// </summary>
         private void ShowLineObjects()
         {
             // Clear previous verts amd indices
@@ -704,6 +750,11 @@ namespace OpenTKSandbox
             }
         }
 
+        /// <summary>
+        /// Draw texture objects (create list of indexed textures)
+        /// </summary>
+        /// <param name="lineObject">Object containing position information</param>
+        /// <param name="label">The text "label" to draw at given location</param>
         private void DrawTextTexture(LineObjects lineObject, string label)
         {
             decimal texturePosition = 0.0m;
@@ -736,68 +787,14 @@ namespace OpenTKSandbox
 
         #endregion Draw Objects
 
-        #region Resize
-
-        private void OnResize(object sender, EventArgs e)
-        {
-            pnlTimeslice.Width = this.Width - 4;
-            pnlTimeslice.Height = this.Height - 30;
-            OnGL_Resize(sender, e);
-        }
-
-        private void OnGL_Resize(object sender, EventArgs e)
-        {
-            if (windowInitialised)
-            {
-                // If the panel/glControl has a height of zero (minimized) then return without doing any calculations otherwise we get some NaN values and window won't recover.
-                if (pnlTimeslice.Height == 0)
-                {
-                    return;
-                }
-
-                float newSiteAreaSizeX = glControl1.Width / scale;
-                float newSiteAreaSizeY = glControl1.Height / scale;
-
-                SetupViewport();
-
-                if (newSiteAreaSizeX != siteAreaSizeX)
-                {
-                    yScale = viewHeight / newSiteAreaSizeY;
-                    viewWidth = (float)(newSiteAreaSizeX * yScale);
-                    viewDepth = (float)(siteAreaSizeZ * yScale * zScaleFactor);
-                }
-
-                if (newSiteAreaSizeY != siteAreaSizeY)
-                {
-                    xScale = viewWidth / newSiteAreaSizeX;
-                    viewHeight = (float)(newSiteAreaSizeY * xScale);
-                    viewDepth = (float)(siteAreaSizeZ * xScale * zScaleFactor);
-                }
-
-                // Re-adjust the site area to be scaled correctly
-                siteAreaSizeX = newSiteAreaSizeX;
-                siteAreaSizeY = newSiteAreaSizeY;
-
-                windowSize.Width = glControl1.Width;
-                windowSize.Height = glControl1.Height;
-
-                SetupViewport();
-
-                UpdateFrame();
-                UpdateTextureFrame();
-
-                SetModelView();
-                glControl1.Invalidate();
-            }
-        }
-
-        #endregion Resize
-
         #region Update Frame
 
+        /// <summary>
+        /// Update Object Frame
+        /// </summary>
         private void UpdateFrame()
         {
-            // Draw xSection Lines
+            // Draw Lines
             if (lineIndices != null)
             {
                 // Which buffer to draw
@@ -809,7 +806,7 @@ namespace OpenTKSandbox
                 CheckForGL_Error("UpdateFrame: BufferData GLPositionColored2 ArrayBuffer lineVerts.");
 
                 //Which buffer to draw
-                GL.BindBuffer(BufferTarget.ElementArrayBuffer, linesIBO);
+                GL.BindBuffer(BufferTarget.ElementArrayBuffer, IBOlines);
                 CheckForGL_Error("UpdateFrame: BindBuffer ElementArrayBuffer linesIBO.");
 
                 //Draw buffer
@@ -827,6 +824,9 @@ namespace OpenTKSandbox
 
         }
 
+        /// <summary>
+        /// Update Indexed Texture Frame
+        /// </summary>
         private void UpdateTextureFrame()
         {
             Int32 totalTextures = 0;
@@ -881,6 +881,11 @@ namespace OpenTKSandbox
 
         #region Render Screen
 
+        /// <summary>
+        /// On paint
+        /// </summary>
+        /// <param name="sender"></param>
+        /// <param name="e"></param>
         private void OnGL_Paint(object sender, PaintEventArgs e)
         {
             drawing = true;
@@ -890,6 +895,9 @@ namespace OpenTKSandbox
             drawing = false;
         }
 
+        /// <summary>
+        /// Render GL Control
+        /// </summary>
         private void Render()
         {
             CheckForGL_Error("Render process: Existing error.");
@@ -921,6 +929,9 @@ namespace OpenTKSandbox
             glControl1.SwapBuffers();
         }
 
+        /// <summary>
+        /// Render objects
+        /// </summary>
         private void RenderLineObjects()
         {
             ErrorCode err;
@@ -957,7 +968,7 @@ namespace OpenTKSandbox
                     CheckForGL_Error("Draw Lines EnableVertexAttribArray attribute_color");
 
                     //Index buffer to draw lines
-                    GL.BindBuffer(BufferTarget.ElementArrayBuffer, linesIBO);
+                    GL.BindBuffer(BufferTarget.ElementArrayBuffer, IBOlines);
                     CheckForGL_Error("Draw Lines BindBuffer Element Array linesIBO");
 
                     GL.DrawElements(BeginMode.Lines, lineIndices.Count(), DrawElementsType.UnsignedInt, 0);
@@ -989,9 +1000,11 @@ namespace OpenTKSandbox
 
         }
 
+        /// <summary>
+        /// Render Indexed Textures
+        /// </summary>
         private void RenderTextObjects()
         {
-            ErrorCode err;
             List<GPRscdGLTexture> textTexture = null;
 
             #region Draw Line Numbers text
@@ -1011,7 +1024,7 @@ namespace OpenTKSandbox
                         {
                             // Send the modelView matrix
                             GL.UniformMatrix4(uniform_modelview, false, ref ModelViewProjectionMatrix);
-                            CheckForGL_Error("Draw XSection Texts UniformMatrix4");
+                            CheckForGL_Error("Draw Text UniformMatrix4");
 
                             GL.ActiveTexture(TextureUnit.Texture4);
                             CheckForGL_Error("Render Text ActiveTexture set to Texture4.");
@@ -1075,12 +1088,86 @@ namespace OpenTKSandbox
                 }
             }
 
-            #endregion Draw XSection Numbers text
+            #endregion Draw Line Numbers text
 
         }
 
         #endregion Render Screen
 
+        #region Resize
+
+        /// <summary>
+        /// On window resize, resize the panel that the GL Control is bound to
+        /// </summary>
+        /// <param name="sender"></param>
+        /// <param name="e"></param>
+        private void OnResize(object sender, EventArgs e)
+        {
+            pnlTimeslice.Width = this.Width - 4;
+            pnlTimeslice.Height = this.Height - 30;
+            OnGL_Resize(sender, e);
+        }
+
+        /// <summary>
+        /// On resize of GL Control
+        /// </summary>
+        /// <param name="sender"></param>
+        /// <param name="e"></param>
+        private void OnGL_Resize(object sender, EventArgs e)
+        {
+            if (windowInitialised)
+            {
+                // If the panel/glControl has a height of zero (minimized) then return without doing any calculations otherwise we get some NaN values and window won't recover.
+                if (pnlTimeslice.Height == 0)
+                {
+                    return;
+                }
+
+                float newSiteAreaSizeX = glControl1.Width / scale;
+                float newSiteAreaSizeY = glControl1.Height / scale;
+
+                SetupViewport();
+
+                if (newSiteAreaSizeX != siteAreaSizeX)
+                {
+                    yScale = viewHeight / newSiteAreaSizeY;
+                    viewWidth = (float)(newSiteAreaSizeX * yScale);
+                    viewDepth = (float)(siteAreaSizeZ * yScale * zScaleFactor);
+                }
+
+                if (newSiteAreaSizeY != siteAreaSizeY)
+                {
+                    xScale = viewWidth / newSiteAreaSizeX;
+                    viewHeight = (float)(newSiteAreaSizeY * xScale);
+                    viewDepth = (float)(siteAreaSizeZ * xScale * zScaleFactor);
+                }
+
+                // Re-adjust the site area to be scaled correctly
+                siteAreaSizeX = newSiteAreaSizeX;
+                siteAreaSizeY = newSiteAreaSizeY;
+
+                windowSize.Width = glControl1.Width;
+                windowSize.Height = glControl1.Height;
+
+                SetupViewport();
+
+                UpdateFrame();
+                UpdateTextureFrame();
+
+                SetModelView();
+                glControl1.Invalidate();
+            }
+        }
+
+        #endregion Resize
+
+        #region Loop
+
+        /// <summary>
+        /// Application Idle loop
+        /// </summary>
+        /// <param name="sender"></param>
+        /// <param name="e"></param>
         private void Application_Idle(object sender, EventArgs e)
         {
             while (glControl1.IsIdle)
@@ -1089,6 +1176,14 @@ namespace OpenTKSandbox
             }
         }
 
+        #endregion Loop
+
+        #region Error Handling
+
+        /// <summary>
+        /// Display GL Error, if error reported
+        /// </summary>
+        /// <param name="function"></param>
         private void CheckForGL_Error(string function)
         {
             ErrorCode err = GL.GetError();
@@ -1098,6 +1193,8 @@ namespace OpenTKSandbox
                 Console.WriteLine("A GL error was caught during the " + function + " function, error code: " + err.ToString() + ".");
             }
         }
+
+        #endregion Error Handling
     }
 
     #region Definitions
