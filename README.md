@@ -1,4 +1,4 @@
-# OpenGLFeatureTesting
+# OpenTK Sandbox
 
 Test ground for C# and OpenTK.
 
